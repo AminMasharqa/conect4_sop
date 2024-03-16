@@ -22,6 +22,11 @@ class Connect4:
             board_str += '|' + '|'.join(row) + '|' + "\n"
         board_str += '+---' * self.columns + '+\n'
         return board_str
+    
+    # In Connect4 class in game_logic.py
+    def can_make_move(self, col):
+        return 0 <= col < self.columns and self.board[0][col] == ' '
+
 
 
     def is_valid_location(self, column):

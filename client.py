@@ -8,17 +8,24 @@ def display_main_menu(sock):
     return choice
 
 def play_game(sock):
+    waiting_for_move = True  # Flag to control when to prompt for user input
     while True:
         server_msg = sock.recv(1024).decode('utf-8')
         print(server_msg)
-        if "Your move" in server_msg or "AI moved" in server_msg:
-            move = input("Enter your move (column 0-6): ")
-            sock.send(move.encode('utf-8'))
-        elif "won!" in server_msg:
-            print(server_msg)
+
+        if "Your move" in server_msg:
+            if waiting_for_move:
+                move = input("Enter your move (column 0-6): ")
+                sock.send(move.encode('utf-8'))
+                # waiting_for_move = False  # After sending a move, wait for the server's response
+        elif "AI moved at column" in server_msg or "Your move at column" in server_msg:
+            waiting_for_move = True  # After AI moves, wait for the user's next move
+        elif "won!" in server_msg or "The game is a draw." in server_msg:
             break
-        elif "Waiting for another player" in server_msg:
-            continue
+
+
+
+
 
 def main():
     host = '127.0.0.1'

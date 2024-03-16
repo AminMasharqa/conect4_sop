@@ -44,23 +44,41 @@ def match_player(conn, addr):
 
 def play_with_ai(conn, difficulty):
     game = Connect4()
+    conn.send(f"Game start. You are playing as 'X'.\n{game.get_board_string()}".encode('utf-8'))
+    
     while True:
-        # Change print_board(game.board) to game.display_board()
-        # Since display_board prints directly, you cannot send it over a socket.
-        # Consider sending the board state as a string if needed.
+        # Wait for client's move
+        conn.send("Your move (column 0-6): ".encode('utf-8'))
         move = int(conn.recv(1024).decode('utf-8').strip())
-        game.drop_piece(game.get_next_open_row(move), move, 'X')  # Assume 'X' is the player's piece
-        if game.check_win('X'):
-            conn.send("You won!".encode('utf-8'))
+
+        if not game.is_valid_location(move):
+            conn.send("Invalid move. Please try again.\n".encode('utf-8'))
+            continue
+        
+        # Process client's move
+        row = game.get_next_open_row(move)
+        game.drop_piece(row, move, 'X')
+        if game.check_win('X') or game.is_board_full():
+            message = f"{game.get_board_string()}"
+            message += "You won! Game over." if game.check_win('X') else "The game is a draw."
+            conn.send(message.encode('utf-8'))
             break
+
+        # AI makes its move
         ai_move = choose_ai_move(difficulty, game)
-        if ai_move is not None:  # Ensure ai_move is valid before making the move
-            game.drop_piece(game.get_next_open_row(ai_move), ai_move, 'O')  # Assume 'O' is the AI's piece
-            if game.check_win('O'):
-                conn.send("AI won!".encode('utf-8'))
-                break
-        # Need to convert the board to a string format to send it over the socket
-        # conn.send(f"AI moved to {ai_move}. Your turn.\n{stringify_board(game)}".encode('utf-8'))
+        row = game.get_next_open_row(ai_move)
+        game.drop_piece(row, ai_move, 'O')
+        
+        # Send updated board and check for win/draw
+        message = f"AI moved at column {ai_move}.\n{game.get_board_string()}"
+        if game.check_win('O'):
+            message += "AI won! Game over."
+        elif game.is_board_full():
+            message += "The game is a draw."
+        conn.send(message.encode('utf-8'))
+
+
+
 
 
 def start_game(player1, player2):

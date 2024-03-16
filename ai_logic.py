@@ -2,10 +2,17 @@ import random
 from game_logic import Connect4
 
 def random_move(game):
+    print("random_move invoked ")
+
     valid_moves = [col for col in range(7) if game.can_make_move(col)]
     return random.choice(valid_moves) if valid_moves else None
+def minimax_move_wrapper(game, depth, is_maximizing):
+    # Wrapper function that calls minimax and returns only the column
+    column, _ = minimax_move(game, depth, is_maximizing)
+    return column
 
 def minimax_move(game, depth, is_maximizing, alpha=-float("inf"), beta=float("inf")):
+    print("minimax_move invoked ")
     # Base case: Check for a win, loss, or draw, or if depth is 0
     if game.check_win('X'):  # Assuming 'X' is the AI
         return None, float("inf")
@@ -49,7 +56,9 @@ def minimax_move(game, depth, is_maximizing, alpha=-float("inf"), beta=float("in
 
 
 def choose_ai_move(difficulty, game):
+    print("choose_ai_move invoked ")
+    depth = 5
     if difficulty == '1':
         return random_move(game)
     elif difficulty == '2':
-        return minimax_move(game, depth=4, is_maximizing=True)
+        return minimax_move_wrapper(game, depth, True)
