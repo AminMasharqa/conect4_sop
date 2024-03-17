@@ -13,15 +13,21 @@ def play_game(sock):
         server_msg = sock.recv(1024).decode('utf-8')
         print(server_msg)
 
-        if "Your move" in server_msg:
-            if waiting_for_move:
-                move = input("Enter your move (column 0-6): ")
-                sock.send(move.encode('utf-8'))
-                # waiting_for_move = False  # After sending a move, wait for the server's response
+        if "Enter the max moves to win" in server_msg:
+            max_moves = input("Enter the max moves to win (4-21): ")
+            print("from the client ", )
+            print(max_moves)
+            sock.send(max_moves.encode('utf-8'))
+        elif "Your move" in server_msg and waiting_for_move:
+            move = input("Enter your move (column 0-6): ")
+            sock.send(move.encode('utf-8'))
         elif "AI moved at column" in server_msg or "Your move at column" in server_msg:
-            waiting_for_move = True  # After AI moves, wait for the user's next move
+            waiting_for_move = True  # Ready for the next move
         elif "won!" in server_msg or "The game is a draw." in server_msg:
+            break  # Game end
+        elif "has won the game!" in server_msg or "The game is a draw." in server_msg:
             break
+
 
 
 

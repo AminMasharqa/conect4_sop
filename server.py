@@ -3,6 +3,7 @@ import threading
 from game_logic import Connect4  # Remove print_board from the import
 from ai_logic import choose_ai_move
 from utils import validate_positive_input
+import time
 
 HOST = '127.0.0.1'
 PORT = 5555
@@ -42,40 +43,93 @@ def match_player(conn, addr):
     else:
         conn.send("Waiting for another player...".encode('utf-8'))
 
+def send_post_game_summary(conn, game):
+    # Construct the post-game summary string
+    summary = f"Game Summary:\n- Total Rounds: {game.rounds}\n"
+    summary += f"- Wins Distribution: X has {game.wins['X']} wins, O has {game.wins['O']} wins\n"
+    summary += f"- Clutch Factor: X's clutch moves {game.clutch_factor['X']}, O's clutch moves {game.clutch_factor['O']}\n"
+    conn.send(summary.encode('utf-8'))
+
+# Update the play_with_ai and start_game functions in server.py to call send_post_game_summary at the end of a game session.
+
+
+
 def play_with_ai(conn, difficulty):
     game = Connect4()
+
+    # Send initial game board and instructions
     conn.send(f"Game start. You are playing as 'X'.\n{game.get_board_string()}".encode('utf-8'))
-    
+
+    # Initialize variables for handling invalid inputs and freeze times
+    invalid_input_count = 0
+    freeze_time_seconds = 60  # Start with a 1-minute freeze time
+    client_moves = 0  # Counter for the client's moves
+
+
+    # Loop to handle "max moves to win" input with invalid input handling
     while True:
-        # Wait for client's move
+        conn.send("Enter the max moves to win (4-21): ".encode('utf-8'))
+        max_moves_input = conn.recv(1024).decode('utf-8').strip()
+        try:
+            max_moves = int(max_moves_input)
+            if 4 <= max_moves <= 21:
+                print(f"Valid max moves to win: {max_moves}")
+                conn.send(f"\n{game.get_board_string()}".encode('utf-8'))
+
+
+                break  # Valid input received, exit loop
+            else:
+                raise ValueError  # Treat out-of-range values as invalid inputs
+        except ValueError:
+            invalid_input_count += 1
+            if invalid_input_count % 5 == 0:
+                # Freeze client interactions for the current freeze time
+                conn.send(f"Too many invalid inputs. Please wait {freeze_time_seconds} seconds before trying again.".encode('utf-8'))
+                time.sleep(freeze_time_seconds)
+                # Double the freeze time for the next set of invalid inputs
+                freeze_time_seconds *= 2
+            else:
+                conn.send("Invalid input detected. Please enter a numeric value between 4 and 21.\n".encode('utf-8'))
+                continue  # Continue to prompt for valid input
+
+    # Game loop for player moves and AI responses
+    while True:
+
+        client_moves += 1  # Increment the client's moves counter after each valid move
+        if client_moves > max_moves:
+            # If client moves exceed the max_moves, send a message and break the loop
+            conn.send("You have exceeded the maximum number of allowed moves. Game over.\n".encode('utf-8'))
+            break  # End the game session
         conn.send("Your move (column 0-6): ".encode('utf-8'))
-        move = int(conn.recv(1024).decode('utf-8').strip())
+        move_input = conn.recv(1024).decode('utf-8').strip()
+        try:
+            move = int(move_input)
+            if game.is_valid_location(move):
+                game.drop_piece(game.get_next_open_row(move), move, 'X')
+                if game.check_win('X') or game.is_board_full():
+                    conn.send(f"{game.get_board_string()}You won! Game over.\n".encode('utf-8') if game.check_win('X') else f"{game.get_board_string()}The game is a draw.\n".encode('utf-8'))
+                    send_post_game_summary(conn, game)
 
-        if not game.is_valid_location(move):
-            conn.send("Invalid move. Please try again.\n".encode('utf-8'))
-            continue
-        
-        # Process client's move
-        row = game.get_next_open_row(move)
-        game.drop_piece(row, move, 'X')
-        if game.check_win('X') or game.is_board_full():
-            message = f"{game.get_board_string()}"
-            message += "You won! Game over." if game.check_win('X') else "The game is a draw."
-            conn.send(message.encode('utf-8'))
-            break
+                    break
+                ai_move = choose_ai_move(difficulty, game)
+                game.drop_piece(game.get_next_open_row(ai_move), ai_move, 'O')
+                if game.check_win('O'):
+                    conn.send(f"AI moved at column {ai_move}.\n{game.get_board_string()}AI won! Game over.\n".encode('utf-8'))
+                    send_post_game_summary(conn, game)
 
-        # AI makes its move
-        ai_move = choose_ai_move(difficulty, game)
-        row = game.get_next_open_row(ai_move)
-        game.drop_piece(row, ai_move, 'O')
-        
-        # Send updated board and check for win/draw
-        message = f"AI moved at column {ai_move}.\n{game.get_board_string()}"
-        if game.check_win('O'):
-            message += "AI won! Game over."
-        elif game.is_board_full():
-            message += "The game is a draw."
-        conn.send(message.encode('utf-8'))
+                    break
+                elif game.is_board_full():
+                    conn.send(f"AI moved at column {ai_move}.\n{game.get_board_string()}The game is a draw.\n".encode('utf-8'))
+                    break
+                else:
+                    conn.send(f"AI moved at column {ai_move}.\n{game.get_board_string()}\n".encode('utf-8'))
+            else:
+                conn.send("Invalid move. Please try again.\n".encode('utf-8'))
+        except ValueError:
+            conn.send("Invalid move detected. Please enter a numeric column (0-6).\n".encode('utf-8'))
+    send_post_game_summary(conn, game)
+
+
 
 
 
@@ -115,8 +169,10 @@ def start_game(player1, player2):
         # Check for win or draw
         if game.check_win('X' if current_turn == 1 else 'O'):
             for player in players.values():
+                print("hereeeeeeeeee")
                 if player == current_player:
                     player.send("Congratulations, you won!".encode('utf-8'))
+
                 else:
                     player.send(f"Player {current_turn} has won the game!".encode('utf-8'))
             break
@@ -129,6 +185,7 @@ def start_game(player1, player2):
         current_turn = 3 - current_turn
 
     # Close connections at the end of the game
+    send_post_game_summary(player1, game)
     player1.close()
     player2.close()
 
